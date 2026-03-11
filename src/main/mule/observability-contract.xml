@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" 
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" 
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+
+    <!-- 
+        OBSERVABILITY CONTRACT CORE
+        This file contains the reusable abstract subflows that all APIs must invoke 
+        to ensure standard JSON structured logging. 
+    -->
+
+    <!-- 1. Initialization: Ensures CorrelationID exists -->
+    <sub-flow name="obs-init-context" doc:name="obs-init-context">
+        <set-variable variableName="flowStartTime" value="#[now()]" doc:name="Set flowStartTime"/>
+        <!-- If correlationId is not set by the HTTP listener/caller, generate one -->
+        <set-variable variableName="correlationId" value="#[correlationId default uuid()]" doc:name="Ensure correlationId"/>
+    </sub-flow>
+
+    <!-- 2. FLOW_START: Lean ingress log -->
+    <sub-flow name="obs-log-flow-start" doc:name="obs-log-flow-start">
+        <logger level="INFO" category="com.enterprise.observability" doc:name="INFO: Flow Start"
+            message="#[
+                output application/json
+                var logParams = {
+                    level: 'INFO',
+                    eventType: 'FLOW_START',
+                    eventCode: 'OBS-1001',
+                    message: 'Flow Execution Started',
+                    currentPayload: payload
+                }
+                ---
+                lookup('callCanonicalLogFormatter', logParams)
+            ]"/>
+    </sub-flow>
+
+    <!-- 3. FLOW_END: Computes total execution time -->
+    <sub-flow name="obs-log-flow-end" doc:name="obs-log-flow-end">
+        <logger level="INFO" category="com.enterprise.observability" doc:name="INFO: Flow End"
+            message="#[
+                output application/json
+                var elapsed = if(vars.flowStartTime != null) (now() - vars.flowStartTime).milliseconds else 0
+                var logParams = {
+                    level: 'INFO',
+                    eventType: 'FLOW_END',
+                    eventCode: 'OBS-1002',
+                    message: 'Flow Execution Completed',
+                    elapsedMs: elapsed,
+                    currentPayload: payload
+                }
+                ---
+                lookup('callCanonicalLogFormatter', logParams)
+            ]"/>
+    </sub-flow>
+
+    <!-- 4. STEP/MILESTONE START: Logs progression inside complex flows -->
+    <sub-flow name="obs-log-step-start" doc:name="obs-log-step-start">
+        <logger level="INFO" category="com.enterprise.observability" doc:name="INFO: Step Start"
+            message="#[
+                output application/json
+                var logParams = {
+                    level: 'INFO',
+                    eventType: 'STEP_START',
+                    eventCode: 'OBS-2001',
+                    message: vars.obsStepMessage default 'Starting Business Step',
+                    stepName: vars.obsStepName default 'UNKNOWN_STEP',
+                    currentPayload: payload
+                }
+                ---
+                lookup('callCanonicalLogFormatter', logParams)
+            ]"/>
+    </sub-flow>
+
+    <!-- 5. OUTBOUND TARGET CALL: Records target systems -->
+    <sub-flow name="obs-log-outbound-request" doc:name="obs-log-outbound-request">
+        <logger level="INFO" category="com.enterprise.observability" doc:name="INFO: Outbound Request"
+            message="#[
+                output application/json
+                var logParams = {
+                    level: 'INFO',
+                    eventType: 'OUTBOUND_REQUEST',
+                    eventCode: 'OBS-3001',
+                    message: 'Calling target system',
+                    targetSystem: vars.obsTargetSystem default 'UNKNOWN_SYSTEM',
+                    targetOperation: vars.obsTargetOperation default 'UNKNOWN_OP',
+                    endpoint: vars.obsTargetEndpoint,
+                    method: vars.obsTargetMethod,
+                    currentPayload: payload,
+                    beforePayload: if((p('obs.debug.enabled') default 'false') == 'true') payload else null
+                }
+                ---
+                lookup('callCanonicalLogFormatter', logParams)
+            ]"/>
+    </sub-flow>
+
+    <!-- 6. OUTBOUND RESPONSE: Records target system result -->
+    <sub-flow name="obs-log-outbound-response" doc:name="obs-log-outbound-response">
+        <logger level="INFO" category="com.enterprise.observability" doc:name="INFO: Outbound Response"
+            message="#[
+                output application/json
+                var logParams = {
+                    level: 'INFO',
+                    eventType: 'OUTBOUND_RESPONSE',
+                    eventCode: 'OBS-3002',
+                    message: 'Target system responded',
+                    targetSystem: vars.obsTargetSystem default 'UNKNOWN_SYSTEM',
+                    httpStatus: attributes.statusCode default 200,
+                    currentPayload: payload,
+                    afterPayload: if((p('obs.debug.enabled') default 'false') == 'true') payload else null
+                }
+                ---
+                lookup('callCanonicalLogFormatter', logParams)
+            ]"/>
+    </sub-flow>
+
+    <!-- 7. ERROR HANDLED: Detailed Root Cause Logging -->
+    <sub-flow name="obs-log-error-handled" doc:name="obs-log-error-handled">
+        <logger level="ERROR" category="com.enterprise.observability" doc:name="ERROR: Handled Exception"
+            message="#[
+                output application/json
+                var logParams = {
+                    level: 'ERROR',
+                    eventType: 'ERROR_HANDLED',
+                    eventCode: 'OBS-5001',
+                    message: 'An error occurred and was handled safely',
+                    errorCategory: vars.obsErrorCategory default 'System Error',
+                    errorCode: vars.obsErrorCode default '500',
+                    currentPayload: payload,
+                    stepName: vars.obsStepName
+                }
+                ---
+                lookup('callCanonicalLogFormatter', logParams)
+            ]"/>
+    </sub-flow>
+
+    <!-- LookUp Delegate Flow: Because you can't dynamically call external 
+         DWL files safely inside logger properties directly in older Mule runtimes, 
+         we proxy the DWL file through a simple Transform Message using the lookup() function. -->
+    <flow name="callCanonicalLogFormatter" doc:name="callCanonicalLogFormatter">
+        <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" doc:name="Format via DWL">
+            <ee:message>
+                <ee:set-payload resource="dwl/canonical-log-formatter.dwl"/>
+            </ee:message>
+        </ee:transform>
+        <!-- The return of this flow is just the JSON string output of the transform -->
+    </flow>
+
+</mule>

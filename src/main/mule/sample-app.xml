@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" 
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" 
+      xmlns:http="http://www.mulesoft.org/schema/mule/http" 
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+                          http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+                          http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- Global Config -->
+    <global-property doc:name="Global Property" name="mule.env" value="dev" />
+    <global-property doc:name="Global Property" name="obs.debug.enabled" value="true" />
+    
+    <http:listener-config name="HTTP_Listener_Config" doc:name="HTTP Listener config">
+        <http:listener-connection host="0.0.0.0" port="8081" />
+    </http:listener-config>
+
+    <!-- 1. The Main API Request Journey -->
+    <flow name="sample-app-flow" doc:name="sample-app-flow">
+        <http:listener doc:name="POST /customers" config-ref="HTTP_Listener_Config" path="/customers" />
+        
+        <!-- INITIALIZE CONTEXT AND LOG START -->
+        <flow-ref doc:name="Initialize Observability Context" name="obs-init-context" />
+        <flow-ref doc:name="Log Flow Start" name="obs-log-flow-start" />
+
+        <!-- MOCK BUSINESS STEP -->
+        <set-variable variableName="obsStepName" value="Extract Business ID" doc:name="Set Step Name" />
+        <set-variable variableName="businessId" value="#[payload.customerId default 'N/A']" doc:name="Set businessId" />
+        <flow-ref doc:name="Log Step Execution" name="obs-log-step-start" />
+
+        <!-- MOCK OUTBOUND CALL -->
+        <set-variable variableName="obsTargetSystem" value="SAP ERP" doc:name="obsTargetSystem"/>
+        <set-variable variableName="obsTargetOperation" value="POST_CUSTOMER" doc:name="obsTargetOperation"/>
+        <flow-ref doc:name="Log Outbound Request" name="obs-log-outbound-request" />
+        
+        <ee:transform doc:name="Mock SAP Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ "sapId": "SAP-00123", "status": "CREATED", "sensitiveToken": "ABDX-192-ZZZ" }
+]]></ee:set-payload>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="obsStatusCode"><![CDATA[201]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <flow-ref doc:name="Log Outbound Response" name="obs-log-outbound-response" />
+
+        <!-- LOG FLOW COMPLETION -->
+        <flow-ref doc:name="Log Flow End" name="obs-log-flow-end" />
+
+        <!-- Error Handler (just for Demo coverage) -->
+        <error-handler>
+            <on-error-continue enableNotifications="true" logException="false" doc:name="On Error Continue" type="ANY">
+                <set-variable variableName="obsErrorCategory" value="Connection Timeout" doc:name="obsErrorCategory" />
+                <set-variable variableName="obsErrorCode" value="504" doc:name="obsErrorCode" />
+                <flow-ref doc:name="Log Handled Exception" name="obs-log-error-handled" />
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+</mule>
