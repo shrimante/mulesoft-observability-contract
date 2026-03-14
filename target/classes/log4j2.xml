@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration status="INFO" packages="com.mulesoft.ch.logging.appender">
+    
+    <Appenders>
+        <!-- Standard Console Appender for Local / RTF Output -->
+        <Console name="Console" target="SYSTEM_OUT">
+             <!-- The DataWeave formatter handles the JSON structure entirely. 
+                  We just need the logger to output the raw message without injecting its own dates/threads 
+                  into the visible string, because they are already inside the JSON. -->
+            <PatternLayout pattern="%msg%n" />
+        </Console>
+
+        <!-- CloudHub 2.0 Log Appender -->
+        <Log4J2CloudhubLogAppender name="CloudHub"
+            addressProvider="com.mulesoft.ch.logging.DefaultAggregatorAddressProvider"
+            applicationContext="com.mulesoft.ch.logging.DefaultApplicationContext"
+            appendRetryIntervalMs="${sys:logging.appendRetryInterval}"
+            appendMaxAttempts="${sys:logging.appendMaxAttempts}"
+            batchSendIntervalMs="${sys:logging.batchSendInterval}"
+            batchMaxRecords="${sys:logging.batchMaxRecords}"
+            memBufferMaxSize="${sys:logging.memBufferMaxSize}"
+            journalMaxWriteBatchSize="${sys:logging.journalMaxBatchSize}"
+            journalMaxFileSize="${sys:logging.journalMaxFileSize}"
+            clientTimeoutMs="${sys:logging.clientTimeout}"
+            clientMaxConnections="${sys:logging.clientMaxConnections}">
+            <PatternLayout pattern="%msg%n"/>
+        </Log4J2CloudhubLogAppender>
+    </Appenders>
+
+    <Loggers>
+        <!-- Http Logger shows wire traffic on DEBUG -->
+        <AsyncLogger name="org.mule.service.http.impl.service.HttpMessageLogger" level="WARN"/>
+        <AsyncLogger name="org.mule.service.http" level="WARN"/>
+        <AsyncLogger name="org.mule.extension.http" level="WARN"/>
+
+        <!-- Mule classes -->
+        <AsyncLogger name="org.mule" level="INFO"/>
+        <AsyncLogger name="com.mulesoft" level="INFO"/>
+
+        <!-- The core application logger for our Observability Contract -->
+        <AsyncLogger name="com.enterprise.observability" level="DEBUG"/>
+
+        <!-- Root Logger -->
+        <AsyncRoot level="INFO">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="CloudHub"/>
+        </AsyncRoot>
+    </Loggers>
+
+</Configuration>

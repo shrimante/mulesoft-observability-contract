@@ -1,0 +1,14 @@
+# API Identification
+api.name: "customer-sync-sys-api"
+api.layer: "System"
+api.version: "v1"
+
+# Environment
+mule.env: "dev"
+
+# Observability Contract Overrides
+obs.logging.mode: "REDACTED_DETAIL" # Options: SUMMARY, REDACTED_DETAIL, NONE
+obs.debug.enabled: "true"           # Set to true to enable dense diagnostics (before/after payloads)
+
+# Note: In production, obs.debug.enabled should be 'false', and logging mode should be 'SUMMARY'
+# unless specifically troubleshooting an active incident.
